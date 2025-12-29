@@ -131,21 +131,25 @@ type fakeTracer struct {
 	log  []string
 }
 
+var _ tracingService = (*fakeTracer)(nil)
+
 func (f *fakeTracer) GetOpenTracingTracer() opentracing.Tracer {
 	return opentracing.GlobalTracer()
 }
 
-func (f *fakeTracer) NewFromString(parent, label string) (Span, error) {
+func (f *fakeTracer) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
 	if parent == "" {
-		return &mockSpan{tracer: f}, errors.New("parent is empty")
+		return nil, nil, errors.New("parent is empty")
 	}
-	return &mockSpan{tracer: f}, nil
+	span := mockSpan{tracer: f}
+	return &span, f.NewContext(inCtx, &span), nil
 }
 
-func (f *fakeTracer) New(parent Span, label string) Span {
+func (f *fakeTracer) NewSpan(inCtx context.Context, label string) (Span, context.Context) {
 	f.log = append(f.log, "span started")
 
-	return &mockSpan{tracer: f}
+	span := mockSpan{tracer: f}
+	return &span, f.NewContext(inCtx, &span)
 }
 
 func (f *fakeTracer) FromContext(ctx context.Context) (Span, bool) {

@@ -50,41 +50,29 @@ type OpenTelemetry struct {
 	defaultTracer  trace.Tracer
 }
 
-// New creates a new span from an existing one, if provided. The parent can also be nil
-func (o OpenTelemetry) New(parent Span, label string) Span {
-	// TODO: This is the wrong API for Otel - I should get a context passed in, and return one
-	var ctx context.Context
-	if parent != nil {
-		if otelSpan, ok := parent.(OtelSpan); ok {
-			ctx = trace.ContextWithSpan(context.Background(), otelSpan.Span)
-		}
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	_, span := o.defaultTracer.Start(context.Background(), label)
-	return OtelSpan{span}
+// NewSpan starts a span using the default otel tracer
+func (o OpenTelemetry) NewSpan(parent context.Context, label string) (Span, context.Context) {
+	ctx, span := o.defaultTracer.Start(parent, label)
+	return OtelSpan{span}, ctx
 }
 
 // NewFromString creates a new span and uses the provided string to reconstitute the parent span
-func (o OpenTelemetry) NewFromString(parent, label string) (Span, error) {
-	// TODO: This is the wrong API for Otel; I should return a context
-
+func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
 	decodedBytes, err := base64.StdEncoding.DecodeString(parent)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var data map[string]string
 	err = json.Unmarshal(decodedBytes, &data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// TODO: this probably doesn't work, we need to munge the jaeger format into something more otel
-	ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.MapCarrier(data))
-	_, span := o.defaultTracer.Start(ctx, label)
-	return OtelSpan{span}, nil
+	ctx := otel.GetTextMapPropagator().Extract(inCtx, propagation.MapCarrier(data))
+	ctx2, span := o.defaultTracer.Start(ctx, label)
+	return OtelSpan{span}, ctx2, nil
 }
 
 // FromContext extracts a span from a context, making it possible to annotate the span with additional information

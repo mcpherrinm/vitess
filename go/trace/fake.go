@@ -26,12 +26,15 @@ import (
 
 type noopTracingServer struct{}
 
-func (noopTracingServer) New(Span, string) Span { return NoopSpan{} }
-func (noopTracingServer) NewClientSpan(parent Span, serviceName, label string) Span {
-	return NoopSpan{}
+func (s noopTracingServer) NewSpan(inCtx context.Context, label string) (Span, context.Context) {
+	return NoopSpan{}, inCtx
 }
+
+func (s noopTracingServer) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
+	return NoopSpan{}, inCtx, nil
+}
+
 func (noopTracingServer) FromContext(context.Context) (Span, bool)                  { return nil, false }
-func (noopTracingServer) NewFromString(parent, label string) (Span, error)          { return NoopSpan{}, nil }
 func (noopTracingServer) NewContext(parent context.Context, _ Span) context.Context { return parent }
 func (noopTracingServer) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), addStats func(s stats.Handler)) {
 }
