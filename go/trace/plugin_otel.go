@@ -69,6 +69,11 @@ func parseUberTraceID(value string) (trace.TraceID, trace.SpanID, error) {
 	// TODO: split[3] is flags
 	traceID, spanID := split[0], split[1]
 
+	if len(traceID) < 32 {
+		// Receivers MUST accept hex-strings shorter than 32 characters and 0-pad them on the left
+		traceID = strings.Repeat("0", 32-len(traceID)) + traceID
+	}
+
 	tID, err := trace.TraceIDFromHex(traceID)
 	if err != nil {
 		return trace.TraceID{}, trace.SpanID{}, err
