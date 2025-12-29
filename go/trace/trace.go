@@ -27,6 +27,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 
 	"vitess.io/vitess/go/viperutil"
 	"vitess.io/vitess/go/vt/log"
@@ -92,13 +93,13 @@ func CopySpan(parentCtx, spanCtx context.Context) context.Context {
 }
 
 // AddGrpcServerOptions adds GRPC interceptors that read the parent span from the grpc packets
-func AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor)) {
-	currentTracer.AddGrpcServerOptions(addInterceptors)
+func AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), addStats func(s stats.Handler)) {
+	currentTracer.AddGrpcServerOptions(addInterceptors, addStats)
 }
 
 // AddGrpcClientOptions adds GRPC interceptors that add parent information to outgoing grpc packets
-func AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor)) {
-	currentTracer.AddGrpcClientOptions(addInterceptors)
+func AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), addStats func(s stats.Handler)) {
+	currentTracer.AddGrpcClientOptions(addInterceptors, addStats)
 }
 
 // tracingService is an interface for creating spans or extracting them from Contexts.
@@ -116,10 +117,10 @@ type tracingService interface {
 	NewContext(parent context.Context, span Span) context.Context
 
 	// AddGrpcServerOptions allows a tracing system to add interceptors to grpc server traffic
-	AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor))
+	AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), addStats func(s stats.Handler))
 
 	// AddGrpcClientOptions allows a tracing system to add interceptors to grpc server traffic
-	AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor))
+	AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), addStats func(s stats.Handler))
 }
 
 // TracerFactory creates a tracing service for the service provided. It's important to close the provided io.Closer

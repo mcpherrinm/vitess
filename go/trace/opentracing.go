@@ -24,6 +24,7 @@ import (
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 
 	"vitess.io/vitess/go/vt/vterrors"
 )
@@ -55,13 +56,13 @@ type openTracingService struct {
 }
 
 // AddGrpcServerOptions is part of an interface implementation
-func (jf openTracingService) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor)) {
+func (jf openTracingService) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), _ func(s stats.Handler)) {
 	ot := jf.Tracer.GetOpenTracingTracer()
 	addInterceptors(otgrpc.OpenTracingStreamServerInterceptor(ot), otgrpc.OpenTracingServerInterceptor(ot))
 }
 
 // AddGrpcClientOptions is part of an interface implementation
-func (jf openTracingService) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor)) {
+func (jf openTracingService) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), _ func(s stats.Handler)) {
 	ot := jf.Tracer.GetOpenTracingTracer()
 	addInterceptors(otgrpc.OpenTracingStreamClientInterceptor(ot), otgrpc.OpenTracingClientInterceptor(ot))
 }

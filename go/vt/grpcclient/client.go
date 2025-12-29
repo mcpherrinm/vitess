@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/semaphore"
@@ -33,6 +32,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/stats"
 
 	"vitess.io/vitess/go/trace"
 	"vitess.io/vitess/go/vt/grpccommon"
@@ -167,7 +167,7 @@ func interceptors() []grpc.DialOption {
 	if grpccommon.EnableGRPCPrometheus() {
 		builder.Add(grpc_prometheus.StreamClientInterceptor, grpc_prometheus.UnaryClientInterceptor)
 	}
-	trace.AddGrpcClientOptions(builder.Add)
+	trace.AddGrpcClientOptions(builder.Add, builder.AddStatsHandler)
 	return builder.Build()
 }
 
@@ -225,6 +225,7 @@ func dialConcurrencyLimitOption() grpc.DialOption {
 type clientInterceptorBuilder struct {
 	unaryInterceptors  []grpc.UnaryClientInterceptor
 	streamInterceptors []grpc.StreamClientInterceptor
+	statsHandlers      []stats.Handler
 }
 
 // Add adds interceptors to the chain of interceptors
@@ -233,15 +234,25 @@ func (collector *clientInterceptorBuilder) Add(s grpc.StreamClientInterceptor, u
 	collector.streamInterceptors = append(collector.streamInterceptors, s)
 }
 
+func (collector *clientInterceptorBuilder) AddStatsHandler(handler stats.Handler) {
+	collector.statsHandlers = append(collector.statsHandlers, handler)
+}
+
 // Build returns DialOptions to add to the grpc.Dial call
 func (collector *clientInterceptorBuilder) Build() []grpc.DialOption {
-	switch len(collector.unaryInterceptors) + len(collector.streamInterceptors) {
-	case 0:
-		return []grpc.DialOption{}
-	default:
-		return []grpc.DialOption{
-			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(collector.unaryInterceptors...)),
-			grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(collector.streamInterceptors...)),
-		}
+	var opts []grpc.DialOption
+
+	if len(collector.unaryInterceptors) > 0 {
+		opts = append(opts, grpc.WithChainUnaryInterceptor(collector.unaryInterceptors...))
 	}
+
+	if len(collector.streamInterceptors) > 0 {
+		opts = append(opts, grpc.WithChainStreamInterceptor(collector.streamInterceptors...))
+	}
+
+	for _, statsHandler := range collector.statsHandlers {
+		opts = append(opts, grpc.WithStatsHandler(statsHandler))
+	}
+
+	return opts
 }

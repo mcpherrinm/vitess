@@ -21,6 +21,7 @@ import (
 	"io"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 )
 
 type noopTracingServer struct{}
@@ -32,9 +33,9 @@ func (noopTracingServer) NewClientSpan(parent Span, serviceName, label string) S
 func (noopTracingServer) FromContext(context.Context) (Span, bool)                  { return nil, false }
 func (noopTracingServer) NewFromString(parent, label string) (Span, error)          { return NoopSpan{}, nil }
 func (noopTracingServer) NewContext(parent context.Context, _ Span) context.Context { return parent }
-func (noopTracingServer) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor)) {
+func (noopTracingServer) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), addStats func(s stats.Handler)) {
 }
-func (noopTracingServer) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor)) {
+func (noopTracingServer) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), addStats func(s stats.Handler)) {
 }
 
 // NoopSpan implements Span with no-op methods.
