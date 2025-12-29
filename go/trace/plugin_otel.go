@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
@@ -56,9 +57,36 @@ func (o OpenTelemetry) NewSpan(parent context.Context, label string) (Span, cont
 	return OtelSpan{span}, ctx
 }
 
+// parseUberTraceID parses the legacy Uber Trace IDs that Vitess is documented to work with
+// This is here as a transition mechanism.
+func parseUberTraceID(value string) (trace.TraceID, trace.SpanID, error) {
+	split := strings.SplitN(value, ":", 5)
+	if len(split) != 4 {
+		return trace.TraceID{}, trace.SpanID{}, fmt.Errorf("invalid uber-trace-id: %d parts", len(split))
+	}
+
+	// split[2] is deprecated and ignored
+	// TODO: split[3] is flags
+	traceID, spanID := split[0], split[1]
+
+	tID, err := trace.TraceIDFromHex(traceID)
+	if err != nil {
+		return trace.TraceID{}, trace.SpanID{}, err
+	}
+
+	sID, err := trace.SpanIDFromHex(spanID)
+	if err != nil {
+		return trace.TraceID{}, trace.SpanID{}, err
+	}
+
+	return tID, sID, nil
+}
+
 // NewFromString creates a new span and uses the provided string to reconstitute the parent span
 func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
 	haxSpan, _ := o.NewSpan(inCtx, "decoding incoming label")
+	defer haxSpan.Finish()
+
 	haxSpan.Annotate("label", label)
 	haxSpan.Annotate("parent string", parent)
 
@@ -75,13 +103,21 @@ func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string
 		return nil, nil, err
 	}
 
-	// TODO: this probably doesn't work, we need to munge the jaeger format into something more otel
-	ctx := otel.GetTextMapPropagator().Extract(inCtx, propagation.MapCarrier(data))
+	sc := trace.SpanContext{}
+	if uberTraceID, ok := data["uber-trace-id"]; ok {
+		tID, sID, err := parseUberTraceID(uberTraceID)
+		if err != nil {
+			haxSpan.Annotate("uber-trace-id", err.Error())
+			return nil, nil, err
+		}
+		sc = sc.WithTraceID(tID).WithSpanID(sID)
+		haxSpan.Annotate("parsed-trace-id", tID.String())
+		haxSpan.Annotate("parsed-span-id", sID.String())
+	}
 
-	haxSpan.Finish()
-
-	ctx2, span := o.defaultTracer.Start(ctx, label)
-	return OtelSpan{span}, ctx2, nil
+	ctx, span := o.defaultTracer.Start(trace.ContextWithRemoteSpanContext(inCtx, sc), label, trace.WithSpanKind(trace.SpanKindServer))
+	span.SetAttributes(attribute.String("mattm-test", "serverspan"))
+	return OtelSpan{span}, ctx, nil
 }
 
 // FromContext extracts a span from a context, making it possible to annotate the span with additional information
