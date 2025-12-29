@@ -58,10 +58,16 @@ func (o OpenTelemetry) NewSpan(parent context.Context, label string) (Span, cont
 
 // NewFromString creates a new span and uses the provided string to reconstitute the parent span
 func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
+	haxSpan, _ := o.NewSpan(inCtx, "decoding incoming label")
+	haxSpan.Annotate("label", label)
+	haxSpan.Annotate("parent string", parent)
+
 	decodedBytes, err := base64.StdEncoding.DecodeString(parent)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	haxSpan.Annotate("decoded", decodedBytes)
 
 	var data map[string]string
 	err = json.Unmarshal(decodedBytes, &data)
@@ -71,6 +77,9 @@ func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string
 
 	// TODO: this probably doesn't work, we need to munge the jaeger format into something more otel
 	ctx := otel.GetTextMapPropagator().Extract(inCtx, propagation.MapCarrier(data))
+
+	haxSpan.Finish()
+
 	ctx2, span := o.defaultTracer.Start(ctx, label)
 	return OtelSpan{span}, ctx2, nil
 }
