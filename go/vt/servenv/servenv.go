@@ -101,8 +101,8 @@ var timeouts = &TimeoutFlags{
 func RegisterFlags() {
 	OnParse(func(fs *pflag.FlagSet) {
 		fs.DurationVar(&timeouts.LameduckPeriod, "lameduck-period", timeouts.LameduckPeriod, "keep running at least this long after SIGTERM before stopping")
-		utils.SetFlagDurationVar(fs, &timeouts.OnTermTimeout, "onterm-timeout", timeouts.OnTermTimeout, "wait no more than this for OnTermSync handlers before stopping")
-		utils.SetFlagDurationVar(fs, &timeouts.OnCloseTimeout, "onclose-timeout", timeouts.OnCloseTimeout, "wait no more than this for OnClose handlers before stopping")
+		utils.SetFlagDurationVar(fs, &timeouts.OnTermTimeout, "onterm-timeout", timeouts.OnTermTimeout, "wait no more than this for OnTermSync statsHandlers before stopping")
+		utils.SetFlagDurationVar(fs, &timeouts.OnCloseTimeout, "onclose-timeout", timeouts.OnCloseTimeout, "wait no more than this for OnClose statsHandlers before stopping")
 		fs.BoolVar(&catchSigpipe, "catch-sigpipe", catchSigpipe, "catch and ignore SIGPIPE on stdout and stderr if specified")
 		fs.IntVar(&maxStackSize, "max-stack-size", maxStackSize, "configure the maximum stack size in bytes")
 		fs.IntVar(&tableRefreshInterval, "table-refresh-interval", tableRefreshInterval, "interval in milliseconds to refresh tables in status page with refreshRequired class")
@@ -115,8 +115,8 @@ func RegisterFlags() {
 func RegisterFlagsWithTimeouts(tf *TimeoutFlags) {
 	OnParse(func(fs *pflag.FlagSet) {
 		fs.DurationVar(&tf.LameduckPeriod, "lameduck-period", tf.LameduckPeriod, "keep running at least this long after SIGTERM before stopping")
-		utils.SetFlagDurationVar(fs, &tf.OnTermTimeout, "onterm-timeout", tf.OnTermTimeout, "wait no more than this for OnTermSync handlers before stopping")
-		utils.SetFlagDurationVar(fs, &tf.OnCloseTimeout, "onclose-timeout", tf.OnCloseTimeout, "wait no more than this for OnClose handlers before stopping")
+		utils.SetFlagDurationVar(fs, &tf.OnTermTimeout, "onterm-timeout", tf.OnTermTimeout, "wait no more than this for OnTermSync statsHandlers before stopping")
+		utils.SetFlagDurationVar(fs, &tf.OnCloseTimeout, "onclose-timeout", tf.OnCloseTimeout, "wait no more than this for OnClose statsHandlers before stopping")
 		fs.BoolVar(&catchSigpipe, "catch-sigpipe", catchSigpipe, "catch and ignore SIGPIPE on stdout and stderr if specified")
 		fs.IntVar(&maxStackSize, "max-stack-size", maxStackSize, "configure the maximum stack size in bytes")
 		fs.IntVar(&tableRefreshInterval, "table-refresh-interval", tableRefreshInterval, "interval in milliseconds to refresh tables in status page with refreshRequired class")

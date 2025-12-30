@@ -24,6 +24,7 @@ import (
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 
 	"vitess.io/vitess/go/vt/vterrors"
 )
@@ -55,26 +56,26 @@ type openTracingService struct {
 }
 
 // AddGrpcServerOptions is part of an interface implementation
-func (jf openTracingService) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor)) {
+func (jf openTracingService) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), _ func(s stats.Handler)) {
 	ot := jf.Tracer.GetOpenTracingTracer()
 	addInterceptors(otgrpc.OpenTracingStreamServerInterceptor(ot), otgrpc.OpenTracingServerInterceptor(ot))
 }
 
 // AddGrpcClientOptions is part of an interface implementation
-func (jf openTracingService) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor)) {
+func (jf openTracingService) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), _ func(s stats.Handler)) {
 	ot := jf.Tracer.GetOpenTracingTracer()
 	addInterceptors(otgrpc.OpenTracingStreamClientInterceptor(ot), otgrpc.OpenTracingClientInterceptor(ot))
 }
 
-// NewClientSpan is part of an interface implementation
-func (jf openTracingService) NewClientSpan(parent Span, serviceName, label string) Span {
-	span := jf.New(parent, label)
-	span.Annotate("peer.service", serviceName)
-	return span
+func (jf openTracingService) NewSpan(inCtx context.Context, label string) (Span, context.Context) {
+	parent, _ := jf.FromContext(inCtx)
+	span := jf.new(parent, label)
+	outCtx := jf.NewContext(inCtx, span)
+
+	return span, outCtx
 }
 
-// New is part of an interface implementation
-func (jf openTracingService) New(parent Span, label string) Span {
+func (jf openTracingService) new(parent Span, label string) Span {
 	var innerSpan opentracing.Span
 	if parent == nil {
 		innerSpan = jf.Tracer.GetOpenTracingTracer().StartSpan(label)
@@ -101,17 +102,18 @@ func extractMapFromString(in string) (opentracing.TextMapCarrier, error) {
 	return dat, nil
 }
 
-func (jf openTracingService) NewFromString(parent, label string) (Span, error) {
+func (jf openTracingService) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
 	carrier, err := extractMapFromString(parent)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	spanContext, err := jf.Tracer.GetOpenTracingTracer().Extract(opentracing.TextMap, carrier)
 	if err != nil {
-		return nil, vterrors.Wrap(err, "failed to deserialize span context")
+		return nil, nil, vterrors.Wrap(err, "failed to deserialize span context")
 	}
 	innerSpan := jf.Tracer.GetOpenTracingTracer().StartSpan(label, opentracing.ChildOf(spanContext))
-	return openTracingSpan{otSpan: innerSpan}, nil
+	spaaaaaan := openTracingSpan{innerSpan}
+	return spaaaaaan, jf.NewContext(inCtx, spaaaaaan), nil
 }
 
 // FromContext is part of an interface implementation

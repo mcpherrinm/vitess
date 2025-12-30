@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 
 	"vitess.io/vitess/go/viperutil/vipertest"
 )
@@ -130,21 +131,25 @@ type fakeTracer struct {
 	log  []string
 }
 
+var _ tracingService = (*fakeTracer)(nil)
+
 func (f *fakeTracer) GetOpenTracingTracer() opentracing.Tracer {
 	return opentracing.GlobalTracer()
 }
 
-func (f *fakeTracer) NewFromString(parent, label string) (Span, error) {
+func (f *fakeTracer) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
 	if parent == "" {
-		return &mockSpan{tracer: f}, errors.New("parent is empty")
+		return nil, nil, errors.New("parent is empty")
 	}
-	return &mockSpan{tracer: f}, nil
+	span := mockSpan{tracer: f}
+	return &span, f.NewContext(inCtx, &span), nil
 }
 
-func (f *fakeTracer) New(parent Span, label string) Span {
+func (f *fakeTracer) NewSpan(inCtx context.Context, label string) (Span, context.Context) {
 	f.log = append(f.log, "span started")
 
-	return &mockSpan{tracer: f}
+	span := mockSpan{tracer: f}
+	return &span, f.NewContext(inCtx, &span)
 }
 
 func (f *fakeTracer) FromContext(ctx context.Context) (Span, bool) {
@@ -158,11 +163,11 @@ func (f *fakeTracer) NewContext(parent context.Context, span Span) context.Conte
 	return parent
 }
 
-func (f *fakeTracer) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor)) {
+func (f *fakeTracer) AddGrpcServerOptions(addInterceptors func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), addStats func(s stats.Handler)) {
 	panic("implement me")
 }
 
-func (f *fakeTracer) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor)) {
+func (f *fakeTracer) AddGrpcClientOptions(addInterceptors func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), addStats func(s stats.Handler)) {
 	panic("implement me")
 }
 

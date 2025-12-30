@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"time"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/spf13/pflag"
 	"google.golang.org/grpc"
@@ -34,6 +33,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/orca"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/stats"
 
 	"vitess.io/vitess/go/trace"
 	"vitess.io/vitess/go/vt/grpccommon"
@@ -291,7 +291,7 @@ func interceptors() []grpc.ServerOption {
 		interceptors.Add(grpc_prometheus.StreamServerInterceptor, grpc_prometheus.UnaryServerInterceptor)
 	}
 
-	trace.AddGrpcServerOptions(interceptors.Add)
+	trace.AddGrpcServerOptions(interceptors.Add, interceptors.AddStatsHandler)
 
 	return interceptors.Build()
 }
@@ -428,6 +428,7 @@ func WrapServerStream(stream grpc.ServerStream) *WrappedServerStream {
 type serverInterceptorBuilder struct {
 	streamInterceptors []grpc.StreamServerInterceptor
 	unaryInterceptors  []grpc.UnaryServerInterceptor
+	statsHandlers      []stats.Handler
 }
 
 // Add adds interceptors to the builder
@@ -441,16 +442,28 @@ func (collector *serverInterceptorBuilder) AddUnary(u grpc.UnaryServerIntercepto
 	collector.unaryInterceptors = append(collector.unaryInterceptors, u)
 }
 
+// AddStatsHandler adds a stats handler to the builder
+func (collector *serverInterceptorBuilder) AddStatsHandler(handler stats.Handler) {
+	collector.statsHandlers = append(collector.statsHandlers, handler)
+}
+
 // Build returns DialOptions to add to the grpc.Dial call
 func (collector *serverInterceptorBuilder) Build() []grpc.ServerOption {
-	log.Infof("Building interceptors with %d unary interceptors and %d stream interceptors", len(collector.unaryInterceptors), len(collector.streamInterceptors))
-	switch len(collector.unaryInterceptors) + len(collector.streamInterceptors) {
-	case 0:
-		return []grpc.ServerOption{}
-	default:
-		return []grpc.ServerOption{
-			grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(collector.unaryInterceptors...)),
-			grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(collector.streamInterceptors...)),
-		}
+	log.Infof("Building interceptors with %d unary interceptors, %d stream interceptors, %d stats statsHandlers", len(collector.unaryInterceptors), len(collector.streamInterceptors), len(collector.statsHandlers))
+
+	var opts []grpc.ServerOption
+
+	if len(collector.unaryInterceptors) > 0 {
+		opts = append(opts, grpc.ChainUnaryInterceptor(collector.unaryInterceptors...))
 	}
+
+	if len(collector.streamInterceptors) > 0 {
+		opts = append(opts, grpc.ChainStreamInterceptor(collector.streamInterceptors...))
+	}
+
+	for _, statsHandler := range collector.statsHandlers {
+		opts = append(opts, grpc.StatsHandler(statsHandler))
+	}
+
+	return opts
 }
