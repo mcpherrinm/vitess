@@ -157,11 +157,11 @@ func (o OpenTelemetry) NewContext(parent context.Context, span Span) context.Con
 }
 
 func (o OpenTelemetry) AddGrpcServerOptions(_ func(s grpc.StreamServerInterceptor, u grpc.UnaryServerInterceptor), addStats func(s stats.Handler)) {
-	addStats(otelgrpc.NewClientHandler(otelgrpc.WithTracerProvider(o.tracerProvider)))
+	addStats(otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(o.tracerProvider)))
 }
 
 func (o OpenTelemetry) AddGrpcClientOptions(_ func(s grpc.StreamClientInterceptor, u grpc.UnaryClientInterceptor), addStats func(s stats.Handler)) {
-	addStats(otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(o.tracerProvider)))
+	addStats(otelgrpc.NewClientHandler(otelgrpc.WithTracerProvider(o.tracerProvider)))
 }
 
 type OtelSpan struct {
