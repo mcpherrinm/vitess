@@ -59,48 +59,50 @@ func (o OpenTelemetry) NewSpan(parent context.Context, label string) (Span, cont
 
 // parseUberTraceID parses the legacy Uber Trace IDs that Vitess is documented to work with
 // This is here as a transition mechanism.
-func parseUberTraceID(value string) (trace.TraceID, trace.SpanID, error) {
+func parseUberTraceID(value string) (trace.TraceID, trace.SpanID, trace.TraceFlags, error) {
 	split := strings.SplitN(value, ":", 5)
 	if len(split) != 4 {
-		return trace.TraceID{}, trace.SpanID{}, fmt.Errorf("invalid uber-trace-id: %d parts", len(split))
+		return trace.TraceID{}, trace.SpanID{}, 0, fmt.Errorf("invalid uber-trace-id: %d parts", len(split))
 	}
 
 	// split[2] is deprecated and ignored
-	// TODO: split[3] is flags
-	traceID, spanID := split[0], split[1]
+	traceID, spanID, flagsStr := split[0], split[1], split[3]
 
 	if len(traceID) < 32 {
 		// Receivers MUST accept hex-strings shorter than 32 characters and 0-pad them on the left
 		traceID = strings.Repeat("0", 32-len(traceID)) + traceID
 	}
 
+	if len(spanID) < 16 {
+		// Receivers MUST accept hex-strings shorter than 16 characters and 0-pad them on the left
+		spanID = strings.Repeat("0", 16-len(spanID)) + spanID
+	}
+
 	tID, err := trace.TraceIDFromHex(traceID)
 	if err != nil {
-		return trace.TraceID{}, trace.SpanID{}, err
+		return trace.TraceID{}, trace.SpanID{}, 0, err
 	}
 
 	sID, err := trace.SpanIDFromHex(spanID)
 	if err != nil {
-		return trace.TraceID{}, trace.SpanID{}, err
+		return trace.TraceID{}, trace.SpanID{}, 0, err
 	}
 
-	return tID, sID, nil
+	var flags byte
+	_, err = fmt.Sscanf(flagsStr, "%x", &flags)
+	if err != nil {
+		return trace.TraceID{}, trace.SpanID{}, 0, err
+	}
+
+	return tID, sID, trace.TraceFlags(flags), nil
 }
 
 // NewFromString creates a new span and uses the provided string to reconstitute the parent span
 func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
-	haxSpan, barfSpan := o.NewSpan(inCtx, "decoding incoming label")
-	defer haxSpan.Finish()
-
-	haxSpan.Annotate("label", label)
-	haxSpan.Annotate("parent string", parent)
-
 	decodedBytes, err := base64.StdEncoding.DecodeString(parent)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	haxSpan.Annotate("decoded", decodedBytes)
 
 	var data map[string]string
 	err = json.Unmarshal(decodedBytes, &data)
@@ -108,20 +110,28 @@ func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string
 		return nil, nil, err
 	}
 
-	sc := trace.SpanContext{}
-	if uberTraceID, ok := data["uber-trace-id"]; ok {
-		tID, sID, err := parseUberTraceID(uberTraceID)
-		if err != nil {
-			haxSpan.Annotate("uber-trace-id", err.Error())
-			return nil, nil, err
-		}
-		sc = sc.WithTraceID(tID).WithSpanID(sID)
-		haxSpan.Annotate("parsed-trace-id", tID.String())
-		haxSpan.Annotate("parsed-span-id", sID.String())
+	// Try extracting from standard OTel propagators first
+	ctx := otel.GetTextMapPropagator().Extract(inCtx, propagation.MapCarrier(data))
+	if sc := trace.SpanFromContext(ctx).SpanContext(); sc.IsValid() {
+		ctx, span := o.defaultTracer.Start(ctx, label, trace.WithSpanKind(trace.SpanKindServer))
+		return OtelSpan{span}, ctx, nil
 	}
 
-	ctx, span := o.defaultTracer.Start(trace.ContextWithRemoteSpanContext(barfSpan, sc), label, trace.WithSpanKind(trace.SpanKindServer))
-	span.SetAttributes(attribute.String("mattm-test", "serverspan"))
+	// Fallback to manual uber-trace-id parsing
+	if uberTraceID, ok := data["uber-trace-id"]; ok {
+		tID, sID, flags, err := parseUberTraceID(uberTraceID)
+		if err != nil {
+			return nil, nil, err
+		}
+		ctx = trace.ContextWithRemoteSpanContext(inCtx, trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    tID,
+			SpanID:     sID,
+			TraceFlags: flags,
+			Remote:     true,
+		}))
+	}
+
+	ctx, span := o.defaultTracer.Start(ctx, label, trace.WithSpanKind(trace.SpanKindServer))
 	return OtelSpan{span}, ctx, nil
 }
 
