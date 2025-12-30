@@ -89,7 +89,7 @@ func parseUberTraceID(value string) (trace.TraceID, trace.SpanID, error) {
 
 // NewFromString creates a new span and uses the provided string to reconstitute the parent span
 func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
-	haxSpan, _ := o.NewSpan(inCtx, "decoding incoming label")
+	haxSpan, barfSpan := o.NewSpan(inCtx, "decoding incoming label")
 	defer haxSpan.Finish()
 
 	haxSpan.Annotate("label", label)
@@ -120,7 +120,7 @@ func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string
 		haxSpan.Annotate("parsed-span-id", sID.String())
 	}
 
-	ctx, span := o.defaultTracer.Start(trace.ContextWithRemoteSpanContext(inCtx, sc), label, trace.WithSpanKind(trace.SpanKindServer))
+	ctx, span := o.defaultTracer.Start(trace.ContextWithRemoteSpanContext(barfSpan, sc), label, trace.WithSpanKind(trace.SpanKindServer))
 	span.SetAttributes(attribute.String("mattm-test", "serverspan"))
 	return OtelSpan{span}, ctx, nil
 }
