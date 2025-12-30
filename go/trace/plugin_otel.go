@@ -98,7 +98,7 @@ func parseUberTraceID(value string) (trace.TraceID, trace.SpanID, trace.TraceFla
 }
 
 // NewFromString creates a new span and uses the provided string to reconstitute the parent span
-func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string) (Span, context.Context, error) {
+func (o OpenTelemetry) NewFromString(ctx context.Context, parent, label string) (Span, context.Context, error) {
 	decodedBytes, err := base64.StdEncoding.DecodeString(parent)
 	if err != nil {
 		return nil, nil, err
@@ -110,26 +110,21 @@ func (o OpenTelemetry) NewFromString(inCtx context.Context, parent, label string
 		return nil, nil, err
 	}
 
-	// Try extracting from standard OTel propagators first
-	ctx := otel.GetTextMapPropagator().Extract(inCtx, propagation.MapCarrier(data))
-	if sc := trace.SpanFromContext(ctx).SpanContext(); sc.IsValid() {
-		ctx, span := o.defaultTracer.Start(ctx, label, trace.WithSpanKind(trace.SpanKindServer))
-		return OtelSpan{span}, ctx, nil
+	uberTraceID, ok := data["uber-trace-id"]
+	if !ok {
+		return nil, nil, fmt.Errorf("no uber-trace-id")
 	}
 
-	// Fallback to manual uber-trace-id parsing
-	if uberTraceID, ok := data["uber-trace-id"]; ok {
-		tID, sID, flags, err := parseUberTraceID(uberTraceID)
-		if err != nil {
-			return nil, nil, err
-		}
-		ctx = trace.ContextWithRemoteSpanContext(inCtx, trace.NewSpanContext(trace.SpanContextConfig{
-			TraceID:    tID,
-			SpanID:     sID,
-			TraceFlags: flags,
-			Remote:     true,
-		}))
+	tID, sID, flags, err := parseUberTraceID(uberTraceID)
+	if err != nil {
+		return nil, nil, err
 	}
+	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tID,
+		SpanID:     sID,
+		TraceFlags: flags,
+		Remote:     true,
+	}))
 
 	ctx, span := o.defaultTracer.Start(ctx, label, trace.WithSpanKind(trace.SpanKindServer))
 	return OtelSpan{span}, ctx, nil
